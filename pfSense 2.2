@@ -1,0 +1,81 @@
+filter {
+	if [type] == "pfsense" {
+	    grok {
+		 match => ["message", "(?<datetime>(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(?:(?:0[1-9])|(?:[12][0-9])|(?:3[01])|[1-9]) (?:2[0123]|[01]?[0-9]):(?:[0-5][0-9]):(?:[0-5][0-9])) (?<logsource_host>(\d+\.\d+\.\d+\.\d+)) (?<prog>.*?): (?<msg>.*)"]
+            }
+
+	    mutate {
+		    gsub => ["datetime","  "," "]
+	    }
+
+	    date {
+            	match => ["datetime", "MMM dd HH:mm:ss"]
+	        timezone => "Europe/Moscow"
+	    }
+
+	    mutate {
+		    replace => ["message", "%{msg}"]
+		    remove_field => [msg]	
+	    }
+	
+	    grok {
+	        match => ["message", "(?<rule_num>\d*),(?<subrule_num>\d*),(?<anchor>\d*),(?<tracker>\d*),(?<real_iface>.*?),(?<reason>.*?),(?<action>block|pass),(?<direction>in|out),(?<ip_ver>4|6),(?<msg>.*)"]
+	    }
+
+	    mutate {
+		    replace => ["message", "%{msg}"]
+		    remove_field => [msg]
+	    }
+	
+	    if [ip_ver] == "4" {
+		    grok {
+			    match => ["message", "(?<IP4_TOS>.*?),(?<IP4_ECN>.*?),(?<IP4_TTL>\d*),(?<IP4_ID>\d*),(?<IP4_Offset>.*?),(?<IP4_Flags>.*?),(?<IP4_proto_id>\d*),(?<IP4_proto_name>.*?),(?<Length>\d*),(%{IPV4:source_ip}),(%{IPV4:destination_ip}),(?<msg>.*)"]
+		    }
+		    mutate {
+			    add_field => {
+					    "ipv4_specific_data" => "TOS:%{IP4_TOS}, ECN:%{IP4_ECN}, TTL:%{IP4_TTL}, ID:%{IP4_ID}, Offset:%{IP4_Offset}, Flags:%{IP4_Flags}, Protocol ID:%{IP4_proto_id}, Protocol text:%{IP4_proto_name}"
+					    "proto" => "%{IP4_proto_name}"
+			    }
+			    lowercase => [proto]
+			    replace => ["message", "%{msg}"]
+			    remove_field => [msg]
+			    remove_field => [IP4_TOS]
+			    remove_field => [IP4_ECN]
+			    remove_field => [IP4_TTL]
+			    remove_field => [IP4_Offset]
+			    remove_field => [IP4_Flags]
+			    remove_field => [IP4_proto_id]
+			    remove_field => [IP4_proto_name]
+			    remove_field => [IP4_ID]
+		    }
+	    }
+	    if [ip_ver] == "6" {
+		    grok {
+			    match => ["message", "(?<IP6_Class>.*?),(?<IP6_Flow_label>.*?),(?<IP6_Hop_limit>\d*),(?<IP6_proto_name>.*?),(?<IP6_proto_id>\d*),(?<Length>\d*),(%{IPV6:source_ip}),(%{IPV6:destination_ip}),(?<msg>.*)"]
+		    }
+		    mutate {
+			    add_field => {
+					    "ipv6_specific_data" => "Class:%{IP6_Class}, Flow label:%{IP6_Flow_label}, Hop limit:%{IP6_Hop_limit}, Protocol text:%{IP6_proto_name}, Protocol ID:%{IP6_proto_id}"
+					    "proto" => "%{IP6_proto_name}"
+			    }
+			    lowercase => [proto]
+			    replace => ["message", "%{msg}"]
+			    remove_field => [msg]
+			    remove_field => [IP6_Class]
+			    remove_field => [IP6_Flow_label]
+			    remove_field => [IP6_Hop_limit]
+			    remove_field => [IP6_proto_name]
+			    remove_field => [IP6_proto_id]
+		    }
+	    }
+	    if [proto] == "udp" or [proto] == "tcp" {
+		    grok {
+			    match => ["message", "(?<source_port>\d*),(?<destination_port>\d*),(?<data_length>\d*)(?<msg>.*)"]
+		    }
+		    mutate {
+			    replace => ["message","%{msg}"]
+			    remove_field => [msg]
+		    }
+	    }
+	}
+}
